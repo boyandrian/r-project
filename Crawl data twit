@@ -1,0 +1,91 @@
+#DataCrawls
+
+api_key = "BR8yIls9kny45S79t6WRkt1eA"
+api_secret = "S7SPBWa6XDUdXnOL2YrTQOlhJIdMZBCHwh6utV3LVzm3E9rGoE"
+access_token = "74996263-SDbJbZdjwPFynhXw8nrEXlSoUOiQfl4P85iaYiV9T"
+access_token_secret = "D6n3HNkC9sTxrAdEue8jv43bOyLoXURVOzznXDQp0Wo1P"
+
+setup_twitter_oauth(api_key, api_secret, access_token, access_token_secret)
+
+
+tw = searchTwitter('rektor + ui', 
+                   n = 1000,
+                   retryOnRateLimit = 10e3)
+
+##save datanya
+saveRDS(tw,file = 'tweet-mentah.rds')
+
+##Load dataset
+tw <- readRDS('tweet-mentah49k.rds')
+d = twListToDF(tw)
+
+##visualisasi time series 
+ts_plot(d, "1 hour") +
+  ggplot2::theme_minimal() +
+  ggplot2::theme(plot.title = ggplot2::element_text(face = "bold")) +
+  ggplot2::labs(
+    x = NULL, y = NULL,
+    title = "Frequency of Jokowi + presiden Twitter statuses from past 1 Week",
+    subtitle = "Twitter status (tweet) counts aggregated using three-hour intervals",
+    caption = "\nSource: Data collected from Twitter's REST API via rtweet"
+  )
+
+##lanjut ke asosiasi
+## hanya ambil data tweet saja
+komen <- d$text
+komenc <- Corpus(VectorSource(komen))
+
+##Cleaning data
+removeURL <- function(x) gsub("http[^[:space:]]*", "", x)
+twitclean <- tm_map(komenc, removeURL)
+removeNL <- function(y) gsub("\n", " ", y)
+twitclean <- tm_map(twitclean, removeNL)
+replacecomma <- function(y) gsub(",", "", y)
+twitclean <- tm_map(twitclean, replacecomma)
+removeRT <- function(y) gsub("RT ", "", y)
+twitclean <- tm_map(twitclean, removeRT)
+removetitik2 <- function(y) gsub(":", "", y)
+twitclean <- tm_map(twitclean, removetitik2)
+removetitikkoma <- function(y) gsub(";", " ", y)
+twitclean <- tm_map(twitclean, removetitikkoma)
+removetitik3 <- function(y) gsub("p.", "", y)
+twitclean <- tm_map(twitclean, removetitik3)
+removeamp <- function(y) gsub("&amp;", "", y)
+twitclean <- tm_map(twitclean, removeamp)
+removeUN <- function(z) gsub("@\\w+", "", z)
+twitclean <- tm_map(twitclean, removeUN)
+remove.all <- function(xy) gsub("[^[:alpha:][:space:]]*", "", xy)
+twitclean <- tm_map(twitclean,remove.all)
+twitclean <- tm_map(twitclean, removePunctuation)
+twitclean <- tm_map(twitclean, tolower)
+
+#Menghapus stopword
+myStopwords = readLines("stopword-id.txt")
+twitclean <- tm_map(twitclean,removeWords,myStopwords)
+twitclean <- tm_map(twitclean , removeWords, 
+                    c('indonesia','presiden','jokowi','joko',
+                      'widodo','pak','bpk','bilang',''))
+
+#Build a term-document matrix
+{
+  dtm <- TermDocumentMatrix(twitclean)
+  m <- as.matrix(dtm)
+  v <- sort(rowSums(m),decreasing=TRUE)
+  d <- data.frame(word = names(v),freq=v)
+}
+
+wordcloud2(d,shape = "cloud",
+           backgroundColor = "black",
+           color = 'random-light' ,
+           size = 0.5)
+
+v<-as.list(findAssocs(dtm,
+                      terms= c('libur','rakyat'),
+                      corlimit= 
+                        c(0.50,0.3)))
+v
+
+## save data
+dataframe<-data.frame(text=unlist(sapply(twitclean, `[`)), stringsAsFactors=F)
+View(dataframe)
+write.csv(dataframe,file = 'twitclean.csv')
